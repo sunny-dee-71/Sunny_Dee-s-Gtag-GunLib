@@ -8,9 +8,9 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Animations.Rigging;
 
-namespace sunnydees_cool_mod.Menu
+namespace sunnydees_cool_mod
 {
-    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "GunLibrary", "1.0.0")]
+    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.1")]
 
     public class GunLib : BaseUnityPlugin
     {
@@ -23,7 +23,6 @@ namespace sunnydees_cool_mod.Menu
         private static int GorillaParticle = LayerMask.NameToLayer("GorillaParticle");
 
         public static RaycastHit GunInfo;
-        private static ExitGames.Client.Photon.Hashtable cp;
 
         public static VRRig VRRigAimedAt;
         public static float TimeSinceLastRigCheck;
@@ -31,42 +30,62 @@ namespace sunnydees_cool_mod.Menu
         public static bool GunLibEnabeld;
         public static float lastupdatedgunpos;
 
-        public static void UpdateGun(bool enabel,string hand,Color colour)
-        {
+        public static bool GunTrigger = false;
+        public static bool GunShowen = false;
 
-            hand = hand.ToLower();
-            UpdateGunPos(hand);
-            MakePointer(GunInfo.point, hand, colour);
-            NetworkGunLib();
-        }
+        public static Color colour = Color.cyan;
 
-        public static void GunSettings(bool AutoAimAtRigs1)
+        public static void UpdateGun(bool Aoutoaimatplayers)
         {
-            if (AutoAimAtRigs1 != null)
+            AutoAimAtRigs = Aoutoaimatplayers;
+            GunTrigger = false;
+            if (ControllerInputPoller.instance.rightGrab)
             {
-                AutoAimAtRigs = AutoAimAtRigs1;
+                UpdateGunPos(true, AutoAimAtRigs);
+                MakePointer(GunInfo.point, true, colour, Aoutoaimatplayers);
+                GunTrigger = ControllerInputPoller.instance.rightControllerIndexFloat > 0.3;
+            }
+            else if (ControllerInputPoller.instance.leftGrab)
+            {
+                UpdateGunPos(false, AutoAimAtRigs);
+                MakePointer(GunInfo.point, false, colour, Aoutoaimatplayers);
+                GunTrigger = ControllerInputPoller.instance.leftControllerIndexFloat > 0.3;
+            }
+            else
+            {
+                GunTrigger = false;
             }
         }
 
 
-        public static void UpdateGunPos(string hand)
+        public static bool GunAimedAtPlayer()
         {
-            if (AutoAimAtRigs)
+            if (RigAimedAt() != null)
+            {
+                return true;
+            }
+            return false;
+        }
+
+
+        public static void UpdateGunPos(bool right,bool AimARigs)
+        {
+            if (AimARigs)
             {
                 foreach (VRRig rig in GorillaParent.instance.vrrigs)
                 {
-                    rig.transform.localScale = new Vector3(5, 5, 5);
+                    rig.transform.localScale = new Vector3(3, 3, 3);
                 }
             }
 
-            if (hand == "right")
+            if (right)
             {
-                Physics.Raycast(GorillaTagger.Instance.rightHandTransform.position,- GorillaTagger.Instance.rightHandTransform.up , out var RayInfo, 512f, NoInvisLayerMask());
+                Physics.Raycast(GorillaTagger.Instance.rightHandTransform.position, -GorillaTagger.Instance.rightHandTransform.up, out var RayInfo, 512f, NoInvisLayerMask());
                 GunInfo = RayInfo;
             }
             else
             {
-                Physics.Raycast(GorillaTagger.Instance.leftHandTransform.position,- GorillaTagger.Instance.leftHandTransform.up, out var RayInfo, 512f, NoInvisLayerMask());
+                Physics.Raycast(GorillaTagger.Instance.leftHandTransform.position, -GorillaTagger.Instance.leftHandTransform.up, out var RayInfo, 512f, NoInvisLayerMask());
                 GunInfo = RayInfo;
             }
 
@@ -86,12 +105,17 @@ namespace sunnydees_cool_mod.Menu
             return ~(1 << TransparentFX | 1 << IgnoreRaycast | 1 << Zone | 1 << GorillaTrigger | 1 << GorillaBoundary | 1 << GorillaCosmetics | 1 << GorillaParticle);
         }
 
-        public static void MakePointer(Vector3 point, string hand, Color colour)
+        public static void SetGunLibColor(Color colour1)
+        {
+            colour = colour1;
+        }
+
+        public static void MakePointer(Vector3 point, bool right, Color colour, bool AimARigs)
         {
             GameObject pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             pointer.transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
             pointer.GetComponent<Renderer>().material.color = colour;
-            if (AutoAimAtRigs && RigAimedAt() != null)
+            if (AimARigs && RigAimedAt() != null)
             {
                 pointer.transform.position = RigAimedAt().transform.position;
             }
@@ -107,13 +131,13 @@ namespace sunnydees_cool_mod.Menu
             GameObject gameObject = new GameObject("Line");
             LineRenderer lineRenderer = gameObject.AddComponent<LineRenderer>();
             lineRenderer.startColor = colour;
-            lineRenderer.endColor = colour - new Color(5,5,5);
+            lineRenderer.endColor = colour - new Color(5, 5, 5);
             lineRenderer.startWidth = 0.025f;
             lineRenderer.endWidth = 0.025f;
             lineRenderer.positionCount = 2;
             lineRenderer.useWorldSpace = true;
 
-            if (hand == "right")
+            if (right)
             {
                 lineRenderer.SetPosition(0, GorillaTagger.Instance.rightHandTransform.position);
             }
@@ -163,56 +187,6 @@ namespace sunnydees_cool_mod.Menu
             }
         }
 
-        public static void NetworkGunLib()
-        {
-            cp = null;
-            if (GunLibEnabled())
-            {
-                var customProperties = new ExitGames.Client.Photon.Hashtable { { "GunLibPos", null } };
-                cp = customProperties;
-            }
-            else
-            {
-                var customProperties = new ExitGames.Client.Photon.Hashtable { { "GunLibPos", GunPos() } };
-                cp = customProperties;
-            }
-            PhotonNetwork.LocalPlayer.SetCustomProperties(cp);
-        }
-
-        public static void ShowNetworkGunLib()
-        {
-            foreach (var player in PhotonNetwork.PlayerList)
-            {
-                if (player != PhotonNetwork.LocalPlayer)
-                {
-                    foreach (DictionaryEntry dictionaryEntry in player.CustomProperties)
-                    {
-                        if (dictionaryEntry.Key.ToString() == "GunLibPos" && dictionaryEntry.Value != null)
-                        {
-                            GameObject pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                            pointer.transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
-                            pointer.GetComponent<Renderer>().material.color = GetVRRigFromPlayer(player).playerColor;
-                            pointer.transform.position = (Vector3)dictionaryEntry.Value;
-
-                            GameObject gameObject = new GameObject("Line");
-                            gameObject.GetComponent<Renderer>().material.shader = Shader.Find("GorillaTag/UberShader");
-                            LineRenderer lineRenderer = gameObject.AddComponent<LineRenderer>();
-                            lineRenderer.startColor = GetVRRigFromPlayer(player).playerColor;
-                            lineRenderer.endColor = GetVRRigFromPlayer(player).playerColor - new Color(5, 5, 5);
-                            lineRenderer.startWidth = 0.025f;
-                            lineRenderer.endWidth = 0.025f;
-                            lineRenderer.positionCount = 2;
-                            lineRenderer.useWorldSpace = true;
-
-                            lineRenderer.SetPosition(0, GetVRRigFromPlayer(player).rightHandTransform.position);
-                            lineRenderer.SetPosition(1, pointer.transform.position);
-                            UnityEngine.Object.Destroy(gameObject, Time.deltaTime);
-                            UnityEngine.Object.Destroy(pointer, Time.deltaTime);
-                        }
-                    }
-                }
-            }
-        }
 
         public static Vector3 GunPos()
         {
@@ -235,7 +209,7 @@ namespace sunnydees_cool_mod.Menu
 
         public static bool GunLibEnabled()
         {
-            if (Time.time > lastupdatedgunpos + 5)
+            if (Time.time > lastupdatedgunpos + 1)
             {
                 GunLibEnabeld = false;
             }
