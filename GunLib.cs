@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using Photon.Pun;
 using PlayFab.ExperimentationModels;
 using System;
@@ -10,7 +10,7 @@ using UnityEngine.Animations.Rigging;
 
 namespace sunnydees_cool_mod
 {
-    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.1")]
+    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.2")]
 
     public class GunLib : BaseUnityPlugin
     {
@@ -35,25 +35,31 @@ namespace sunnydees_cool_mod
 
         public static Color colour = Color.cyan;
 
+        public static bool GunHasBeenLocked { get; private set; }
+
         public static void UpdateGun(bool Aoutoaimatplayers)
         {
             AutoAimAtRigs = Aoutoaimatplayers;
             GunTrigger = false;
             if (ControllerInputPoller.instance.rightGrab)
             {
+                GunShowen = true;
+                GunTrigger = ControllerInputPoller.instance.rightControllerIndexFloat > 0.3;
                 UpdateGunPos(true, AutoAimAtRigs);
                 MakePointer(GunInfo.point, true, colour, Aoutoaimatplayers);
-                GunTrigger = ControllerInputPoller.instance.rightControllerIndexFloat > 0.3;
             }
             else if (ControllerInputPoller.instance.leftGrab)
             {
+                GunShowen = true;
+                GunTrigger = ControllerInputPoller.instance.leftControllerIndexFloat > 0.3;
                 UpdateGunPos(false, AutoAimAtRigs);
                 MakePointer(GunInfo.point, false, colour, Aoutoaimatplayers);
-                GunTrigger = ControllerInputPoller.instance.leftControllerIndexFloat > 0.3;
             }
             else
             {
+                GunShowen = false;
                 GunTrigger = false;
+                GunHasBeenLocked = false;
             }
         }
 
@@ -153,6 +159,17 @@ namespace sunnydees_cool_mod
 
         public static VRRig RigAimedAt()
         {
+            if (GunTrigger && VRRigAimedAt != null)
+            {
+                GunHasBeenLocked = true;
+                return VRRigAimedAt;
+            }
+
+            if (GunHasBeenLocked && VRRigAimedAt != null)
+            {
+                return VRRigAimedAt;
+            }
+
             if (TimeSinceLastRigCheck > 10)
             {
                 TimeSinceLastRigCheck = 0;
