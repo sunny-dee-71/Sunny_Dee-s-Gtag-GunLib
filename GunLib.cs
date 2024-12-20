@@ -1,5 +1,7 @@
 using BepInEx;
+using HarmonyLib;
 using Photon.Pun;
+using Photon.Realtime;
 using PlayFab.ExperimentationModels;
 using System;
 using System.Collections;
@@ -8,9 +10,9 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Animations.Rigging;
 
-namespace sunnydees_cool_mod
+namespace Sunny_Gun_lib
 {
-    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.2")]
+    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.3")]
 
     public class GunLib : BaseUnityPlugin
     {
@@ -76,13 +78,6 @@ namespace sunnydees_cool_mod
 
         public static void UpdateGunPos(bool right,bool AimARigs)
         {
-            if (AimARigs)
-            {
-                foreach (VRRig rig in GorillaParent.instance.vrrigs)
-                {
-                    rig.transform.localScale = new Vector3(3, 3, 3);
-                }
-            }
 
             if (right)
             {
@@ -95,13 +90,6 @@ namespace sunnydees_cool_mod
                 GunInfo = RayInfo;
             }
 
-            if (AutoAimAtRigs)
-            {
-                foreach (VRRig rig in GorillaParent.instance.vrrigs)
-                {
-                    rig.transform.localScale = new Vector3(1, 1, 1);
-                }
-            }
 
             lastupdatedgunpos = Time.time;
         }
@@ -139,7 +127,7 @@ namespace sunnydees_cool_mod
             lineRenderer.startColor = colour;
             lineRenderer.endColor = colour - new Color(5, 5, 5);
             lineRenderer.startWidth = 0.025f;
-            lineRenderer.endWidth = 0.025f;
+            lineRenderer.endWidth = 0.020f;
             lineRenderer.positionCount = 2;
             lineRenderer.useWorldSpace = true;
 
@@ -204,6 +192,21 @@ namespace sunnydees_cool_mod
             }
         }
 
+        public static Player NonNetPlayerAimedAt()
+        {
+            return NetPlayerToPlayer(GetPlayerFromVRRig(RigAimedAt()));
+        }
+
+        public static NetPlayer NetPlayerAimedAt()
+        {
+            return GetPlayerFromVRRig(RigAimedAt());
+        }
+
+        public static PhotonView PNViewAimedAt()
+        {
+            return GetPhotonViewFromVRRig(RigAimedAt());
+        }
+
 
         public static Vector3 GunPos()
         {
@@ -217,11 +220,19 @@ namespace sunnydees_cool_mod
             }
         }
 
-        public static VRRig GetVRRigFromPlayer(Photon.Realtime.Player p)
+        public static Player NetPlayerToPlayer(NetPlayer p) //Thanks IIDK
         {
-            return GorillaGameManager.instance.FindPlayerVRRig(p);
+            return p.GetPlayerRef();
         }
 
+        public static NetPlayer GetPlayerFromVRRig(VRRig p)
+        {
+            return p.Creator;
+        }
+        public static PhotonView GetPhotonViewFromVRRig(VRRig p)
+        {
+            return (PhotonView)Traverse.Create(p).Field("photonView").GetValue();
+        }
 
 
         public static bool GunLibEnabled()
