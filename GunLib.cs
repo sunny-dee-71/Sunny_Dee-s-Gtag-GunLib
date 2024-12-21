@@ -10,9 +10,9 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Animations.Rigging;
 
-namespace sunnydees_cool_mod
+namespace Sunny_Gun_lib
 {
-    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.2")]
+    [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.3")]
 
     public class GunLib : BaseUnityPlugin
     {
@@ -109,14 +109,14 @@ namespace sunnydees_cool_mod
             GameObject pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             pointer.transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
             pointer.GetComponent<Renderer>().material.color = colour;
-
-            Vector3 targetPosition = point;
             if (AimARigs && RigAimedAt() != null)
             {
-                targetPosition = RigAimedAt().transform.position;
+                pointer.transform.position = RigAimedAt().transform.position;
             }
-
-            pointer.transform.position = targetPosition;
+            else
+            {
+                pointer.transform.position = point;
+            }
 
             GameObject.Destroy(pointer.GetComponent<BoxCollider>());
             GameObject.Destroy(pointer.GetComponent<Rigidbody>());
@@ -128,53 +128,22 @@ namespace sunnydees_cool_mod
             lineRenderer.endColor = colour - new Color(5, 5, 5);
             lineRenderer.startWidth = 0.025f;
             lineRenderer.endWidth = 0.020f;
-            lineRenderer.positionCount = 20;
+            lineRenderer.positionCount = 2;
             lineRenderer.useWorldSpace = true;
 
-            Vector3 handPosition = right ? GorillaTagger.Instance.rightHandTransform.position : GorillaTagger.Instance.leftHandTransform.position;
-            Vector3 handForward = right ? GorillaTagger.Instance.rightHandTransform.forward : GorillaTagger.Instance.leftHandTransform.forward;
-
-            Vector3 midPoint1 = handPosition + handForward * 1.0f;
-            Vector3 midPoint2;
-
-            if (AimARigs && RigAimedAt() != null)
+            if (right)
             {
-                Vector3 toTarget = (targetPosition - handPosition).normalized;
-                Vector3 perpendicular = Vector3.Cross(toTarget, Vector3.up).normalized * 0.5f;
-                midPoint2 = (handPosition + targetPosition) / 2 + perpendicular;
+                lineRenderer.SetPosition(0, GorillaTagger.Instance.rightHandTransform.position);
             }
             else
             {
-                midPoint2 = (handPosition + targetPosition) / 2 + Vector3.up * 0.5f;
+                lineRenderer.SetPosition(0, GorillaTagger.Instance.leftHandTransform.position);
             }
-
-            lineRenderer.SetPosition(0, handPosition);
-            lineRenderer.SetPosition(lineRenderer.positionCount - 1, targetPosition);
-
-            for (int i = 1; i < lineRenderer.positionCount - 1; i++)
-            {
-                float t = i / (float)(lineRenderer.positionCount - 1);
-                Vector3 curvePoint = CubicBezierCurve(handPosition, midPoint1, midPoint2, targetPosition, t);
-                lineRenderer.SetPosition(i, curvePoint);
-            }
-
+            lineRenderer.SetPosition(1, pointer.transform.position);
             lineRenderer.material.shader = Shader.Find("GUI/Text Shader");
             UnityEngine.Object.Destroy(gameObject, Time.deltaTime);
             UnityEngine.Object.Destroy(pointer, Time.deltaTime);
         }
-
-        private static Vector3 CubicBezierCurve(Vector3 start, Vector3 control1, Vector3 control2, Vector3 end, float t)
-        {
-            float u = 1 - t;
-            float tt = t * t;
-            float uu = u * u;
-            float uuu = uu * u;
-            float ttt = tt * t;
-
-            return (uuu * start) + (3 * uu * t * control1) + (3 * u * tt * control2) + (ttt * end);
-        }
-
-
 
         public static VRRig RigAimedAt()
         {
