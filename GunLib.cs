@@ -9,8 +9,9 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Animations.Rigging;
+using UnityEngine.InputSystem;
 
-namespace Sunny_Gun_lib
+namespace sunnydees_cool_mod
 {
     [BepInPlugin("org.gorillatag.SunnyDee.GunLib", "Sunny Dee's GunLibrary", "1.0.3")]
 
@@ -26,18 +27,19 @@ namespace Sunny_Gun_lib
 
         public static RaycastHit GunInfo;
 
-        public static VRRig VRRigAimedAt;
-        public static float TimeSinceLastRigCheck;
-        public static bool AutoAimAtRigs;
-        public static bool GunLibEnabeld;
-        public static float lastupdatedgunpos;
+        private static VRRig VRRigAimedAt;
+        private static float TimeSinceLastRigCheck;
+        private static bool AutoAimAtRigs;
+        private static bool GunLibEnabeld;
+        private static float lastupdatedgunpos;
 
         public static bool GunTrigger = false;
         public static bool GunShowen = false;
 
-        public static Color colour = Color.cyan;
+        private static Color colour = Color.cyan;
 
-        public static bool GunHasBeenLocked { get; private set; }
+        private static bool GunHasBeenLocked = false;
+        private static bool NewGunDir = false;
 
         public static void UpdateGun(bool Aoutoaimatplayers)
         {
@@ -47,15 +49,21 @@ namespace Sunny_Gun_lib
             {
                 GunShowen = true;
                 GunTrigger = ControllerInputPoller.instance.rightControllerIndexFloat > 0.3;
-                UpdateGunPos(true, AutoAimAtRigs);
+                UpdateGunPos(true, AutoAimAtRigs, false);
                 MakePointer(GunInfo.point, true, colour, Aoutoaimatplayers);
             }
             else if (ControllerInputPoller.instance.leftGrab)
             {
                 GunShowen = true;
                 GunTrigger = ControllerInputPoller.instance.leftControllerIndexFloat > 0.3;
-                UpdateGunPos(false, AutoAimAtRigs);
+                UpdateGunPos(false, AutoAimAtRigs, false);
                 MakePointer(GunInfo.point, false, colour, Aoutoaimatplayers);
+            }else if (Mouse.current.rightButton.isPressed)
+            {
+                GunShowen = true;
+                GunTrigger = Mouse.current.leftButton.isPressed;
+                UpdateGunPos(true, AutoAimAtRigs, true);
+                MakePointer(GunInfo.point, true, colour, Aoutoaimatplayers);
             }
             else
             {
@@ -76,17 +84,37 @@ namespace Sunny_Gun_lib
         }
 
 
-        public static void UpdateGunPos(bool right,bool AimARigs)
+        private static void UpdateGunPos(bool right, bool AimARigs, bool mouse)
         {
 
-            if (right)
+            if (!mouse)
             {
-                Physics.Raycast(GorillaTagger.Instance.rightHandTransform.position, -GorillaTagger.Instance.rightHandTransform.up, out var RayInfo, 512f, NoInvisLayerMask());
-                GunInfo = RayInfo;
+
+                if (right)
+                {
+                    Physics.Raycast(GorillaTagger.Instance.rightHandTransform.position, (NewGunDir ?  GorillaTagger.Instance.rightHandTransform.forward : -GorillaTagger.Instance.rightHandTransform.up), out var RayInfo, 512f, NoInvisLayerMask());
+                    GunInfo = RayInfo;
+                }
+                else
+                {
+                    Physics.Raycast(GorillaTagger.Instance.leftHandTransform.position, (NewGunDir ? GorillaTagger.Instance.leftHandTransform.forward : -GorillaTagger.Instance.leftHandTransform.up), out var RayInfo, 512f, NoInvisLayerMask());
+                    GunInfo = RayInfo;
+                }
             }
             else
             {
-                Physics.Raycast(GorillaTagger.Instance.leftHandTransform.position, -GorillaTagger.Instance.leftHandTransform.up, out var RayInfo, 512f, NoInvisLayerMask());
+                Camera TPC;
+                try
+                {
+                    TPC = GameObject.Find("Player Objects/Third Person Camera/Shoulder Camera").GetComponent<Camera>();
+                }
+                catch
+                {
+                    TPC = GameObject.Find("Shoulder Camera").GetComponent<Camera>();
+                }
+
+                Ray ray = TPC.ScreenPointToRay(Mouse.current.position.ReadValue());
+                Physics.Raycast(ray, out var RayInfo, 512f, NoInvisLayerMask());
                 GunInfo = RayInfo;
             }
 
@@ -94,7 +122,7 @@ namespace Sunny_Gun_lib
             lastupdatedgunpos = Time.time;
         }
 
-        public static int NoInvisLayerMask()
+        private static int NoInvisLayerMask()
         {
             return ~(1 << TransparentFX | 1 << IgnoreRaycast | 1 << Zone | 1 << GorillaTrigger | 1 << GorillaBoundary | 1 << GorillaCosmetics | 1 << GorillaParticle);
         }
@@ -104,8 +132,19 @@ namespace Sunny_Gun_lib
             colour = colour1;
         }
 
-        public static void MakePointer(Vector3 point, bool right, Color colour, bool AimARigs)
+        public static void SetGunLibDir(bool NewDir)
         {
+            NewGunDir = NewDir;
+        }
+
+        private static void MakePointer(Vector3 point, bool right, Color colour, bool AimARigs)
+        {
+            Color scolour = colour;
+            if (GunTrigger)
+            {
+                scolour = Color.green;
+            }
+
             GameObject pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             pointer.transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
             pointer.GetComponent<Renderer>().material.color = colour;
@@ -124,7 +163,7 @@ namespace Sunny_Gun_lib
 
             GameObject gameObject = new GameObject("Line");
             LineRenderer lineRenderer = gameObject.AddComponent<LineRenderer>();
-            lineRenderer.startColor = colour;
+            lineRenderer.startColor = scolour;
             lineRenderer.endColor = colour - new Color(5, 5, 5);
             lineRenderer.startWidth = 0.025f;
             lineRenderer.endWidth = 0.020f;
@@ -144,6 +183,7 @@ namespace Sunny_Gun_lib
             UnityEngine.Object.Destroy(gameObject, Time.deltaTime);
             UnityEngine.Object.Destroy(pointer, Time.deltaTime);
         }
+
 
         public static VRRig RigAimedAt()
         {
@@ -202,10 +242,17 @@ namespace Sunny_Gun_lib
             return GetPlayerFromVRRig(RigAimedAt());
         }
 
-        public static PhotonView PNViewAimedAt()
+        public static PhotonView PhotonViewAimedAt()
         {
             return GetPhotonViewFromVRRig(RigAimedAt());
         }
+
+        public static NetworkView NetworkedViewAimedAt()
+        {
+            return GetNetworkViewFromVRRig(RigAimedAt());
+        }
+
+
 
 
         public static Vector3 GunPos()
@@ -220,18 +267,22 @@ namespace Sunny_Gun_lib
             }
         }
 
-        public static Player NetPlayerToPlayer(NetPlayer p) //Thanks IIDK
+        private static Player NetPlayerToPlayer(NetPlayer p) //Thanks IIDK
         {
             return p.GetPlayerRef();
         }
 
-        public static NetPlayer GetPlayerFromVRRig(VRRig p)
+        private static NetPlayer GetPlayerFromVRRig(VRRig p)
         {
             return p.Creator;
         }
-        public static PhotonView GetPhotonViewFromVRRig(VRRig p)
+        private static PhotonView GetPhotonViewFromVRRig(VRRig p)
         {
             return (PhotonView)Traverse.Create(p).Field("photonView").GetValue();
+        }
+        private static NetworkView GetNetworkViewFromVRRig(VRRig p)
+        {
+            return (NetworkView)Traverse.Create(p).Field("netView").GetValue();
         }
 
 
