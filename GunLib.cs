@@ -267,7 +267,7 @@ namespace sunnydees_cool_mod
             }
         }
 
-        private static Player NetPlayerToPlayer(NetPlayer p) //Thanks IIDK
+        private static Player NetPlayerToPlayer(NetPlayer p)
         {
             return p.GetPlayerRef();
         }
