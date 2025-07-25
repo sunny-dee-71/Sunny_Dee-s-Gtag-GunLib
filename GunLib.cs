@@ -2,14 +2,10 @@ using BepInEx;
 using HarmonyLib;
 using Photon.Pun;
 using Photon.Realtime;
-using PlayFab.ExperimentationModels;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Text;
 using UnityEngine;
-using UnityEngine.Animations.Rigging;
 using UnityEngine.InputSystem;
+using UnityEngine.XR;
 
 namespace sunnydees_cool_mod
 {
@@ -17,196 +13,195 @@ namespace sunnydees_cool_mod
 
     public class GunLib : BaseUnityPlugin
     {
-        private static int TransparentFX = LayerMask.NameToLayer("TransparentFX");
-        private static int IgnoreRaycast = LayerMask.NameToLayer("Ignore Raycast");
-        private static int Zone = LayerMask.NameToLayer("Zone");
-        private static int GorillaTrigger = LayerMask.NameToLayer("Gorilla Trigger");
-        private static int GorillaBoundary = LayerMask.NameToLayer("Gorilla Boundary");
-        private static int GorillaCosmetics = LayerMask.NameToLayer("GorillaCosmetics");
-        private static int GorillaParticle = LayerMask.NameToLayer("GorillaParticle");
+        public static GunLib Instance { get; private set; }
+        
+        private static int mask =>
+            LayerMask.GetMask("Default", "Gorilla Object", "NoMirror", "Gorilla Tag Collider");
 
-        public static RaycastHit GunInfo;
+        private static RaycastHit _gunInfo;
 
-        private static VRRig VRRigAimedAt;
-        private static float TimeSinceLastRigCheck;
-        private static bool AutoAimAtRigs;
-        private static bool GunLibEnabeld;
-        private static float lastupdatedgunpos;
+        private static VRRig _vrRigAimedAt;
+        private static float _timeSinceLastRigCheck;
+        private static float _lastGunPosUpdateTime;
+        
+        private static Color _defaultColor = Color.white;
+        private static Color _triggerColor = Color.green;
+        
+        private static bool _autoAimAtRigs;
+        private static bool _gunLibEnabled;
+        private static bool _gunHasBeenLocked;
+        
+        public static bool gunTrigger;
 
-        public static bool GunTrigger = false;
-        public static bool GunShowen = false;
+        private GameObject _pointer;
+        private LineRenderer _line;
+        private Renderer _pointerRenderer;
 
-        private static Color colour = Color.cyan;
+        public Camera tpc;
 
-        private static bool GunHasBeenLocked = false;
-        private static bool NewGunDir = false;
-
-        public static void UpdateGun(bool Aoutoaimatplayers)
+        private void Start()
         {
-            AutoAimAtRigs = Aoutoaimatplayers;
-            GunTrigger = false;
-            if (ControllerInputPoller.instance.rightGrab)
+            Instance = this;
+            GorillaTagger.OnPlayerSpawned(PlayerSpawned);
+        }
+
+        private void PlayerSpawned()
+        {
+            _pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            _pointer.transform.localScale = Vector3.one * 0.125f;
+            
+            _pointerRenderer = _pointer.GetComponent<Renderer>();
+            _pointerRenderer.material.color = Color.white;
+            _pointerRenderer.material.shader = Shader.Find("GorillaTag/UberShader");
+            Destroy(_pointer.GetComponent<Collider>());
+            Destroy(_pointer.GetComponent<Rigidbody>());
+            Destroy(_pointer.GetComponent<Collider>());
+            
+            _line = new GameObject("GunLib Line").AddComponent<LineRenderer>();
+            _line.startWidth = 0.007f;
+            _line.endWidth = 0.007f;
+            _line.positionCount = 2;
+            _line.useWorldSpace = true;
+            _line.material.shader = Shader.Find("GUI/Text Shader");
+            _line.gameObject.SetActive(false);
+
+            tpc = GorillaTagger.Instance.thirdPersonCamera.GetComponentInChildren<Camera>();
+        }
+
+        public void Gun(Action<RaycastHit> trigger, bool aimAtPlayers)
+        {
+            UpdateGun(aimAtPlayers);
+            if (gunTrigger)
             {
-                GunShowen = true;
-                GunTrigger = ControllerInputPoller.instance.rightControllerIndexFloat > 0.3;
-                UpdateGunPos(true, AutoAimAtRigs, false);
-                MakePointer(GunInfo.point, true, colour, Aoutoaimatplayers);
-            }
-            else if (ControllerInputPoller.instance.leftGrab)
-            {
-                GunShowen = true;
-                GunTrigger = ControllerInputPoller.instance.leftControllerIndexFloat > 0.3;
-                UpdateGunPos(false, AutoAimAtRigs, false);
-                MakePointer(GunInfo.point, false, colour, Aoutoaimatplayers);
-            }else if (Mouse.current.rightButton.isPressed)
-            {
-                GunShowen = true;
-                GunTrigger = Mouse.current.leftButton.isPressed;
-                UpdateGunPos(true, AutoAimAtRigs, true);
-                MakePointer(GunInfo.point, true, colour, Aoutoaimatplayers);
-            }
-            else
-            {
-                GunShowen = false;
-                GunTrigger = false;
-                GunHasBeenLocked = false;
+                trigger(_gunInfo);
             }
         }
 
+        private void UpdateGun(bool aimAtPlayers)
+        {
+            _autoAimAtRigs = aimAtPlayers;
+            gunTrigger = false;
+            
+            if (ControllerInputPoller.instance.rightGrab && XRSettings.isDeviceActive)
+            {
+                gunTrigger = ControllerInputPoller.instance.rightControllerIndexFloat > 0.3;
+                UpdateGunPos(true, _autoAimAtRigs, false);
+                Cast(_gunInfo.point, true, aimAtPlayers);
+            }
+            else if (ControllerInputPoller.instance.leftGrab && XRSettings.isDeviceActive)
+            {
+                gunTrigger = ControllerInputPoller.instance.leftControllerIndexFloat > 0.3;
+                UpdateGunPos(false, _autoAimAtRigs, false);
+                Cast(_gunInfo.point, false, aimAtPlayers);
+            }
+            else if (Keyboard.current.fKey.isPressed && !XRSettings.isDeviceActive)
+            {
+                gunTrigger = Mouse.current.leftButton.isPressed;
+                UpdateGunPos(true, _autoAimAtRigs, true);
+                Cast(_gunInfo.point, true, aimAtPlayers);
+            }
+            else
+            {
+                gunTrigger = false;
+                _gunHasBeenLocked = false;
+                _pointer.transform.position = Vector3.zero;
+                _line.gameObject.SetActive(false);
+            }
+        }
 
         public static bool GunAimedAtPlayer()
         {
-            if (RigAimedAt() != null)
+            if (RigAimedAt() != null && !RigAimedAt().isOfflineVRRig)
             {
                 return true;
             }
             return false;
         }
 
-
-        private static void UpdateGunPos(bool right, bool AimARigs, bool mouse)
+        private void UpdateGunPos(bool right, bool aimAtPlayers, bool mouse)
         {
-
             if (!mouse)
             {
-
+                Vector3 startPos;
+                Vector3 dir;
+                
                 if (right)
                 {
-                    Physics.Raycast(GorillaTagger.Instance.rightHandTransform.position, (NewGunDir ?  GorillaTagger.Instance.rightHandTransform.forward : -GorillaTagger.Instance.rightHandTransform.up), out var RayInfo, 512f, NoInvisLayerMask());
-                    GunInfo = RayInfo;
+                    startPos = GorillaTagger.Instance.rightHandTransform.position;
+                    dir = -GorillaTagger.Instance.rightHandTransform.up;
                 }
                 else
                 {
-                    Physics.Raycast(GorillaTagger.Instance.leftHandTransform.position, (NewGunDir ? GorillaTagger.Instance.leftHandTransform.forward : -GorillaTagger.Instance.leftHandTransform.up), out var RayInfo, 512f, NoInvisLayerMask());
-                    GunInfo = RayInfo;
+                    startPos = GorillaTagger.Instance.leftHandTransform.position;
+                    dir = -GorillaTagger.Instance.leftHandTransform.up;
                 }
+                    
+                Physics.Raycast(startPos, dir, out var hit, 512f, mask);
+                
+                _gunInfo = hit;
             }
             else
             {
-                Camera TPC;
-                try
+                var ray = tpc.ScreenPointToRay(Mouse.current.position.value);
+                if (Physics.Raycast(ray, out var hit, 512f, mask))
                 {
-                    TPC = GameObject.Find("Player Objects/Third Person Camera/Shoulder Camera").GetComponent<Camera>();
+                    _gunInfo = hit;
                 }
-                catch
-                {
-                    TPC = GameObject.Find("Shoulder Camera").GetComponent<Camera>();
-                }
-
-                Ray ray = TPC.ScreenPointToRay(Mouse.current.position.ReadValue());
-                Physics.Raycast(ray, out var RayInfo, 512f, NoInvisLayerMask());
-                GunInfo = RayInfo;
             }
-
-
-            lastupdatedgunpos = Time.time;
+            
+            _lastGunPosUpdateTime = Time.time;
         }
 
-        private static int NoInvisLayerMask()
+        public static void SetPointerColor(Color defaultColor, Color triggeredColor)
         {
-            return ~(1 << TransparentFX | 1 << IgnoreRaycast | 1 << Zone | 1 << GorillaTrigger | 1 << GorillaBoundary | 1 << GorillaCosmetics | 1 << GorillaParticle);
+            _defaultColor = defaultColor;
+            _triggerColor = triggeredColor;
         }
 
-        public static void SetGunLibColor(Color colour1)
+        private void Cast(Vector3 point, bool right, bool aimAtPlayers)
         {
-            colour = colour1;
-        }
+            var colorFinal = gunTrigger ? _triggerColor : _defaultColor;
 
-        public static void SetGunLibDir(bool NewDir)
-        {
-            NewGunDir = NewDir;
-        }
+            var pos = point;
+            _pointer.transform.position = aimAtPlayers && RigAimedAt() != null ? RigAimedAt().transform.position : pos;
+            _pointerRenderer.material.color = colorFinal;
+            
+            if (!_line.gameObject.activeInHierarchy)
+                _line.gameObject.SetActive(true);
+            
+            _line.startColor = colorFinal;
+            _line.endColor = colorFinal;
 
-        private static void MakePointer(Vector3 point, bool right, Color colour, bool AimARigs)
-        {
-            Color scolour = colour;
-            if (GunTrigger)
-            {
-                scolour = Color.green;
-            }
-
-            GameObject pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            pointer.transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
-            pointer.GetComponent<Renderer>().material.color = colour;
-            if (AimARigs && RigAimedAt() != null)
-            {
-                pointer.transform.position = RigAimedAt().transform.position;
-            }
-            else
-            {
-                pointer.transform.position = point;
-            }
-
-            GameObject.Destroy(pointer.GetComponent<BoxCollider>());
-            GameObject.Destroy(pointer.GetComponent<Rigidbody>());
-            GameObject.Destroy(pointer.GetComponent<Collider>());
-
-            GameObject gameObject = new GameObject("Line");
-            LineRenderer lineRenderer = gameObject.AddComponent<LineRenderer>();
-            lineRenderer.startColor = scolour;
-            lineRenderer.endColor = colour - new Color(5, 5, 5);
-            lineRenderer.startWidth = 0.025f;
-            lineRenderer.endWidth = 0.020f;
-            lineRenderer.positionCount = 2;
-            lineRenderer.useWorldSpace = true;
-
-            if (right)
-            {
-                lineRenderer.SetPosition(0, GorillaTagger.Instance.rightHandTransform.position);
-            }
-            else
-            {
-                lineRenderer.SetPosition(0, GorillaTagger.Instance.leftHandTransform.position);
-            }
-            lineRenderer.SetPosition(1, pointer.transform.position);
-            lineRenderer.material.shader = Shader.Find("GUI/Text Shader");
-            UnityEngine.Object.Destroy(gameObject, Time.deltaTime);
-            UnityEngine.Object.Destroy(pointer, Time.deltaTime);
+            _line.SetPosition(0,
+                right
+                    ? GorillaTagger.Instance.rightHandTransform.position
+                    : GorillaTagger.Instance.leftHandTransform.position);
+            _line.SetPosition(1, _pointer.transform.position);
         }
 
 
         public static VRRig RigAimedAt()
         {
-            if (GunTrigger && VRRigAimedAt != null)
+            if (gunTrigger && _vrRigAimedAt != null)
             {
-                GunHasBeenLocked = true;
-                return VRRigAimedAt;
+                _gunHasBeenLocked = true;
+                return _vrRigAimedAt;
             }
 
-            if (GunHasBeenLocked && VRRigAimedAt != null)
+            if (_gunHasBeenLocked && _vrRigAimedAt != null)
             {
-                return VRRigAimedAt;
+                return _vrRigAimedAt;
             }
 
-            if (TimeSinceLastRigCheck > 10)
+            if (_timeSinceLastRigCheck > 10)
             {
-                TimeSinceLastRigCheck = 0;
+                _timeSinceLastRigCheck = 0;
                 float nearestDistance = Mathf.Infinity;
-                VRRig nearestBody = VRRigAimedAt;
+                VRRig nearestBody = _vrRigAimedAt;
 
                 foreach (VRRig rig in GorillaParent.instance.vrrigs)
                 {
-                    float distance = Vector3.Distance(GunInfo.point, rig.transform.position);
+                    float distance = Vector3.Distance(_gunInfo.point, rig.transform.position);
 
                     if (distance < nearestDistance && distance < 5f && rig != GorillaTagger.Instance.offlineVRRig)
                     {
@@ -217,18 +212,18 @@ namespace sunnydees_cool_mod
                 }
                 if (nearestDistance > 5f)
                 {
-                    VRRigAimedAt = null;
+                    _vrRigAimedAt = null;
                 }
                 else
                 {
-                    VRRigAimedAt = nearestBody;
+                    _vrRigAimedAt = nearestBody;
                 }
-                return VRRigAimedAt;
+                return _vrRigAimedAt;
             }
             else
             {
-                TimeSinceLastRigCheck += 1;
-                return VRRigAimedAt;
+                _timeSinceLastRigCheck += 1;
+                return _vrRigAimedAt;
             }
         }
 
@@ -251,19 +246,16 @@ namespace sunnydees_cool_mod
         {
             return GetNetworkViewFromVRRig(RigAimedAt());
         }
-
-
-
-
+        
         public static Vector3 GunPos()
         {
-            if (AutoAimAtRigs && RigAimedAt() != null)
+            if (_autoAimAtRigs && RigAimedAt() != null)
             {
                 return RigAimedAt().transform.position;
             }
             else
             {
-                return GunInfo.point;
+                return _gunInfo.point;
             }
         }
 
@@ -288,15 +280,15 @@ namespace sunnydees_cool_mod
 
         public static bool GunLibEnabled()
         {
-            if (Time.time > lastupdatedgunpos + 1)
+            if (Time.time > _lastGunPosUpdateTime + 1)
             {
-                GunLibEnabeld = false;
+                _gunLibEnabled = false;
             }
             else
             {
-                GunLibEnabeld = true;
+                _gunLibEnabled = true;
             }
-            return GunLibEnabeld;
+            return _gunLibEnabled;
         }
     }
 }
